@@ -1,0 +1,114 @@
+extends layout
+
+block content
+	h1(style='text-align: center;')	Estación Meteorológica
+	#real-time-container(style="text-align:center; font-size: 1.5em;")
+		| Valor actual: 
+		p#real-time-data(style="display:inline") Cargando...
+		| ºC
+	div#container(style='padding-left: 12cm; padding-right: 12cm; padding-top: 2cm')
+		canvas#myChart
+	script(src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.4.0/Chart.min.js")
+	script(src="/socket.io/socket.io.js")
+	script.
+		// Se abre un socket con el servidor para recibir el valor en tiempo real del nodo
+		var socket = io('//localhost:3000');
+		socket.on("new-temp", function(msg){
+			$('#real-time-data').text(msg);
+		});
+
+		// Funcion para pintar la grafica
+		function drawChart(data){
+			var values = data;
+			var days = [];
+
+			// Se ordenan los valores por dia de la semana
+			for (var k = 0; k < values.length; k++){
+				var record = values[k];
+				var recTime = record.time.split('T');
+				var weekDay = new Date(recTime[0]).toLocaleDateString('es-ES', {weekday: 'long'});
+				var singleDay;
+
+				if(days.length == 0){
+						singleDay = {
+							name: weekDay,
+							values: []
+						}
+						days.push(singleDay);
+				}else{
+					for (var i = 0; i < days.length; i++){
+						if(days[i].name == weekDay){
+							singleDay = days[i];
+							break;
+						}
+						if(i == days.length - 1){
+							singleDay = {
+								name: weekDay,
+								values: []
+							}
+							days.push(singleDay);
+						}
+					}
+				}
+				if(singleDay != null) singleDay.values.push(record.value);
+			}
+			var labels = [];
+			var averageData = [];
+
+			// Se calcula el valor medio de cada dia
+			for (var cont = 0; cont < days.length; cont++){
+				var newDay = days[cont];
+				labels.push(newDay.name);
+				var avg = 0;
+				if(newDay.values.length > 0){
+					for(var j = 0; j < newDay.values.length; j++){
+						avg += parseInt(newDay.values[j]);
+					}
+					avg = avg/newDay.values.length;
+				}
+				averageData.push(avg);
+			}
+			var aux = days[days.length - 1].values;
+			$('#real-time-data').text(aux[aux.length - 1]);
+			//console.log(labels);
+			//console.log(averageData);
+			var ctx = document.getElementById('myChart').getContext('2d');
+			var chart = new Chart(ctx, {
+				// The type of chart we want to create
+				type: 'line',
+
+				// The data for our dataset
+				data: {
+					labels: labels,
+					datasets: [{
+						label: 'Temperatura en la última semana',
+						backgroundColor: 'rgb(255, 99, 132)',
+						borderColor: 'rgb(255, 99, 132)',
+						data: averageData,
+					}]
+				},
+
+				// Configuration options go here
+				options: {
+					scales: {
+						yAxes: [{
+							scaleLabel: {
+								display: true,
+								labelString: 'Temperatura (ºC)'
+							}
+						}]
+					}
+				}
+			});
+		}
+		
+		// Se recuperan los datos cargados de la base de datos y se pinta la grafica con ellos
+		var data = JSON.parse('!{temperature}');
+		if(data != null){
+			drawChart(data);
+		}
+		// Cada 5 segundos se lanza una peticion para obtener el valor del sensor
+		setInterval(function(){
+			socket.emit("temperature", null);
+		}, 5000);
+		

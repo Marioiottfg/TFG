@@ -1,0 +1,121 @@
+extends layout
+
+block content
+	h1(style='text-align: center;')	Estación Meteorológica
+	div#container(style='padding-left: 8cm; padding-right: 8cm; padding-top: 2cm')
+
+	script(src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.4.0/Chart.min.js")
+	script(src="/socket.io/socket.io.js")
+	script.
+		// Se abre un socket con el servidor para recibir el valor en tiempo real del nodo
+		var socket = io('//localhost:3000');
+		socket.on('socketToMe', function (data){
+			console.log(data);
+		});
+
+		// Funcion para pintar la grafica
+		function drawChart(node){
+			var values = node.values;
+			var days = [];
+
+			// Se ordenan los valores por dia de la semana
+			for (var k = 0; k < node.values.length; k++){
+				var record = node.values[k];
+				var recTime = record.time.split('T');
+				var weekDay = new Date(recTime[0]).toLocaleDateString('es-ES', {weekday: 'long'});
+				var singleDay;
+
+				if(days.length == 0){
+						singleDay = {
+							name: weekDay,
+							values: []
+						}
+						days.push(singleDay);
+				}else{
+					for (var i = 0; i < days.length; i++){
+						if(days[i].name == weekDay){
+							singleDay = days[i];
+							break;
+						}
+						if(i == days.length - 1){
+							singleDay = {
+								name: weekDay,
+								values: []
+							}
+							days.push(singleDay);
+						}
+					}
+				}
+				if(singleDay != null) singleDay.values.push(record.value);
+			}
+
+			var labels = [];
+			var averageData = [];
+
+			// Se calcula el valor medio de cada dia
+			for (var cont = 0; cont < days.length; cont++){
+				var newDay = days[cont];
+				labels.push(newDay.name);
+				var avg = 0;
+				if(newDay.values.length > 0){
+					for(var j = 0; j < newDay.values.length; j++){
+						avg += parseInt(newDay.values[j]);
+					}
+					avg = avg/newDay.values.length;
+				}
+				averageData.push(avg);
+			}
+
+			console.log(labels);
+			console.log(averageData);
+			var ctx = document.getElementById(node.name).getContext('2d');
+			var yAxis_text;
+			if(node.name.includes("Temp")){
+				yAxis_name = "Temperatura (ºC)";
+			}else{
+				yAxis_name = "Humedad (%)";
+			}
+			var chart = new Chart(ctx, {
+				// The type of chart we want to create
+				type: 'line',
+
+				// The data for our dataset
+				data: {
+					labels: labels,
+					datasets: [{
+						label: node.name.split("mgiot")[1],
+						backgroundColor: 'rgb(255, 99, 132)',
+						borderColor: 'rgb(255, 99, 132)',
+						data: averageData,
+					}]
+				},
+
+				// Configuration options go here
+				options: {
+					scales: {
+						yAxes: [{
+							scaleLabel: {
+								display: true,
+								labelString: yAxis_name
+							}
+						}]
+					}
+				}
+			});
+		}
+
+		// Se recuperan los datos cargados de la base de datos y se pintan las gráficas con ellos
+		var data = JSON.parse('!{collections}');
+		data.forEach(function(node, i){
+			if(i % 2 === 0){
+				$('#container').append('<div class="row"></div>');
+			}
+			$('#container').find('.row').last().append('<div class="col-md-6"></div>');
+			$('#container').find('.row').last().find('div').last().append('<a href="http://localhost:3000/'+node.name.split("mgiot")[1]+'"><p style="text-align: center; font-size: 2em; cursor: pointer; ">'+node.name.split("mgiot")[1]+'</p></a>');
+			$('#container').find('.row').last().find('div').last().append('<canvas id="'+node.name+'"></canvas>');
+
+			drawChart(node);
+		});
+
+		
+
